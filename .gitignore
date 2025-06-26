@@ -37,3 +37,6 @@ htmlcov/
 node_modules/
 .next/
 .env.local
+
+# Alembic
+alembic/versions/__pycache__/
