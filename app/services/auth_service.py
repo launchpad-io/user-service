@@ -1,5 +1,5 @@
 # app/services/auth_service.py
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -115,8 +115,8 @@ class AuthService:
         if not user.is_verified:
             raise ValueError("Please verify your email before logging in.")
         
-        # Update last login
-        user.last_login = datetime.utcnow()
+        # Update last login with timezone-aware datetime
+        user.last_login = datetime.now(timezone.utc)
         db.commit()
         
         # Create access token
@@ -141,9 +141,12 @@ class AuthService:
         if not user:
             raise ValueError("Invalid verification token")
         
-        # Check if token is expired
-        if user.verification_token_expires < datetime.utcnow():
-            raise ValueError("Verification token has expired")
+        # Check if token is expired - handle both naive and aware datetimes
+        if user.verification_token_expires:
+            # Remove timezone info if it exists for comparison
+            token_expires = user.verification_token_expires.replace(tzinfo=None) if user.verification_token_expires.tzinfo else user.verification_token_expires
+            if token_expires < datetime.utcnow():
+                raise ValueError("Verification token has expired")
         
         # Check if already verified
         if user.is_verified:
@@ -206,9 +209,12 @@ class AuthService:
         if not user:
             raise ValueError("Invalid reset token")
         
-        # Check if token is expired
-        if user.reset_token_expires < datetime.utcnow():
-            raise ValueError("Reset token has expired")
+        # Check if token is expired - handle both naive and aware datetimes
+        if user.reset_token_expires:
+            # Remove timezone info if it exists for comparison
+            token_expires = user.reset_token_expires.replace(tzinfo=None) if user.reset_token_expires.tzinfo else user.reset_token_expires
+            if token_expires < datetime.utcnow():
+                raise ValueError("Reset token has expired")
         
         # Validate new password
         is_valid, error_msg = validate_password_strength(reset_data.password)

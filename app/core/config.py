@@ -1,6 +1,8 @@
-from typing import Optional, Union
+# app/core/config.py
+from typing import Optional, Union, List
 from pydantic_settings import BaseSettings
 from pydantic import EmailStr, validator
+import json
 
 
 class Settings(BaseSettings):
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     JWT_REMEMBER_ME_DAYS: int = 30
 
     # CORS
-    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: List[str] = ["http://127.0.0.1:3000"]
 
     # Email
     MAIL_ENABLED: bool = True
@@ -42,17 +44,38 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
+    LOGIN_RATE_LIMIT: str = "5/minute"
+    SIGNUP_RATE_LIMIT: str = "3/hour"
+    PASSWORD_RESET_RATE_LIMIT: str = "3/hour"
+    VERIFY_EMAIL_RATE_LIMIT: str = "10/hour"
+    GLOBAL_RATE_LIMIT: str = "100/minute"
+    
+    # Rate Limit Storage (future enhancement)
+    RATE_LIMIT_STORAGE_URL: Optional[str] = None  # For Redis in production
 
     # Environment
     ENVIRONMENT: str = "development"
 
     @validator("BACKEND_CORS_ORIGINS", pre=True)
-    def assemble_cors_origins(cls, v: Union[str, list[str]]) -> list[str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            # Handle JSON array format like ["http://localhost:3000"]
+            if v.startswith("["):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, treat as single URL
+                    return [v.strip("[]").strip('"').strip()]
+            # Handle comma-separated format
+            elif "," in v:
+                return [i.strip() for i in v.split(",")]
+            # Handle single URL
+            else:
+                return [v.strip()]
         elif isinstance(v, list):
             return v
-        raise ValueError(v)
+        else:
+            return [str(v)]
 
     class Config:
         env_file = ".env"

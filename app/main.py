@@ -3,8 +3,8 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
-
 from app.core.config import settings
+from app.core.rate_limiter import add_rate_limiter  # Import rate limiter setup
 from app.api.v1 import auth, users  # Import modules directly
 
 # Configure logging
@@ -23,6 +23,11 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
+
+# Add rate limiter to app (do this before adding other middleware)
+if settings.RATE_LIMIT_ENABLED:
+    app = add_rate_limiter(app)
+    logger.info("Rate limiting enabled")
 
 # Configure CORS
 app.add_middleware(
@@ -79,6 +84,7 @@ async def startup_event():
     logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} starting up...")
     logger.info(f"CORS origins: {settings.BACKEND_CORS_ORIGINS}")
     logger.info(f"Environment: {'Development' if settings.DEBUG else 'Production'}")
+    logger.info(f"Rate limiting: {'Enabled' if settings.RATE_LIMIT_ENABLED else 'Disabled'}")
 
 # Shutdown event
 @app.on_event("shutdown")
