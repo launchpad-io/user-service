@@ -4,11 +4,14 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.core.database import get_db
-from app.schemas.user import UserResponse, UserUpdate
+from app.core.rate_limiter import api_limit
+from app.schemas.user import UserResponse, UserUpdate, UsernameCheckRequest, UsernameCheckResponse
 from app.schemas.auth import MessageResponse
 from app.models.user import User, UserRole
-from app.utils.dependencies import get_current_verified_user
+from app.models.user_token import UserToken, TokenType
+from app.utils.dependencies import get_current_verified_user, get_optional_current_user
 from app.services.auth_service import auth_service
+from app.services.user_service import user_service
 
 router = APIRouter()
 
@@ -103,22 +106,25 @@ async def resend_verification_email(
             detail="Email already verified"
         )
     
-    # Generate new verification token
-    from app.core.security import generate_verification_token
-    verification_token, token_expires = generate_verification_token()
+    # Use the new token system
+    from app.services.auth_service import auth_service
     
-    current_user.verification_token = verification_token
-    current_user.verification_token_expires = token_expires
-    db.commit()
+    # Create verification token in user_tokens table
+    verification_token = auth_service._create_token(
+        db,
+        str(current_user.id),
+        TokenType.EMAIL_VERIFICATION,
+        expires_hours=24
+    )
     
     # Send verification email
     from app.services.email_service import email_service
-    display_name = current_user.full_name or current_user.company_name or "there"
+    display_name = current_user.display_name
     
     email_sent = email_service.send_verification_email(
         current_user.email,
         display_name,
-        verification_token
+        verification_token.token_value
     )
     
     if email_sent:
@@ -131,3 +137,27 @@ async def resend_verification_email(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send verification email"
         )
+
+
+@router.post("/check-username", response_model=UsernameCheckResponse)
+@api_limit
+async def check_username_availability(
+    request: UsernameCheckRequest,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Check if a username is available.
+    
+    Returns availability status and suggestions if taken.
+    Public endpoint but considers current user if authenticated.
+    
+    Rate limit: 100 requests per minute
+    """
+    result = await user_service.check_username_availability(
+        db,
+        request.username,
+        current_user.id if current_user else None
+    )
+    
+    return UsernameCheckResponse(**result)
