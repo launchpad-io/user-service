@@ -1,11 +1,12 @@
 # app/api/v1/users.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.core.database import get_db
 from app.core.rate_limiter import api_limit
-from app.schemas.user import UserResponse, UserUpdate, UsernameCheckRequest, UsernameCheckResponse
+from app.schemas.user import UserResponse, UserUpdate
+from app.schemas.auth import UsernameCheckRequest, UsernameCheckResponse
 from app.schemas.auth import MessageResponse
 from app.models.user import User, UserRole
 from app.models.user_token import UserToken, TokenType
@@ -24,7 +25,7 @@ async def get_profile(
     Get current user's profile.
     Requires verified email.
     """
-    return UserResponse.from_orm(current_user)
+    return UserResponse.model_validate(current_user)  # Pydantic v2 change
 
 
 @router.put("/profile", response_model=UserResponse)
@@ -39,12 +40,12 @@ async def update_profile(
     """
     # Check if TikTok username is being updated (for creators)
     if (current_user.role == UserRole.CREATOR and 
-        profile_update.tiktok_username and 
-        profile_update.tiktok_username != current_user.tiktok_username):
+        profile_update.tiktok_handle and 
+        profile_update.tiktok_handle != current_user.tiktok_handle):
         
         # Check if new TikTok username already exists
         existing = db.query(User).filter(
-            User.tiktok_username == profile_update.tiktok_username,
+            User.tiktok_handle == profile_update.tiktok_handle,
             User.id != current_user.id
         ).first()
         
@@ -55,11 +56,11 @@ async def update_profile(
             )
     
     # Update only provided fields
-    update_data = profile_update.dict(exclude_unset=True)
+    update_data = profile_update.model_dump(exclude_unset=True)  # Pydantic v2 change
     
     for field, value in update_data.items():
         # Validate role-specific fields
-        if field == "tiktok_username" and current_user.role != UserRole.CREATOR:
+        if field == "tiktok_handle" and current_user.role != UserRole.CREATOR:
             continue  # Skip TikTok username for non-creators
         
         if field in ["company_name", "contact_full_name"] and current_user.role == UserRole.CREATOR:
@@ -70,7 +71,7 @@ async def update_profile(
     db.commit()
     db.refresh(current_user)
     
-    return UserResponse.from_orm(current_user)
+    return UserResponse.model_validate(current_user)  # Pydantic v2 change
 
 
 @router.delete("/account", response_model=MessageResponse)
@@ -100,7 +101,7 @@ async def resend_verification_email(
     Resend email verification link.
     Only for unverified users.
     """
-    if current_user.is_verified:
+    if current_user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already verified"
@@ -142,7 +143,9 @@ async def resend_verification_email(
 @router.post("/check-username", response_model=UsernameCheckResponse)
 @api_limit
 async def check_username_availability(
-    request: UsernameCheckRequest,
+    request: Request,
+    response: Response,  # Required for rate limiting
+    username_request: UsernameCheckRequest,
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db)
 ):
@@ -156,7 +159,7 @@ async def check_username_availability(
     """
     result = await user_service.check_username_availability(
         db,
-        request.username,
+        username_request.username,
         current_user.id if current_user else None
     )
     

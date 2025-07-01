@@ -31,7 +31,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Schema configuration
-SCHEMAS = ['users', 'campaigns', 'analytics', 'payments', 'integrations', 'public']
+SCHEMAS = ['users', 'campaigns', 'analytics', 'payments', 'integrations']
 
 def include_schemas(names):
     """Helper to include our schemas in migrations"""
@@ -49,7 +49,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         include_schemas=True,
         include_object=include_schemas(SCHEMAS),
-        version_table_schema='public',
+        version_table_schema='users',
         compare_type=True,
         compare_server_default=True,
     )
@@ -67,14 +67,14 @@ def run_migrations_online() -> None:
             prefix="sqlalchemy.",
             poolclass=pool.NullPool,
             connect_args={
-                "options": "-csearch_path=users,public"
+                "options": "-csearch_path=users"
             }
         )
         
         # Ensure schemas exist before running migrations
         with engine.connect() as connection:
             for schema in SCHEMAS:
-                if schema != 'public':  # public always exists
+                if schema != 'users':  # public always exists
                     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
                     connection.commit()
             
@@ -95,7 +95,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             include_schemas=True,
             include_object=include_schemas(SCHEMAS),
-            version_table_schema='public',  # Keep alembic version table in public
+            version_table_schema='users',  # Keep alembic version table in public
             compare_type=True,
             compare_server_default=True,
         )

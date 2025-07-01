@@ -30,14 +30,24 @@ async def get_current_user(
     
     # Decode token
     try:
-        user_id = decode_access_token(token)
-        if user_id is None:
+        payload = decode_access_token(token)
+        if payload is None:
             logger.warning("Failed to decode token - invalid or expired")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        
+        user_id = payload.get("sub")
+        if not user_id:
+            logger.warning("Token missing subject")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            
     except JWTError as e:
         logger.warning(f"JWT decode error: {str(e)}")
         raise HTTPException(
@@ -106,11 +116,13 @@ async def get_optional_current_user(
     
     try:
         token = credentials.credentials
-        user_id = decode_access_token(token)
-        if user_id:
-            user = auth_service.get_user_by_id(db, user_id)
-            if user and user.is_active:
-                return user
+        payload = decode_access_token(token)
+        if payload:
+            user_id = payload.get("sub")
+            if user_id:
+                user = auth_service.get_user_by_id(db, user_id)
+                if user and user.is_active:
+                    return user
     except Exception as e:
         logger.debug(f"Optional auth failed: {str(e)}")
     

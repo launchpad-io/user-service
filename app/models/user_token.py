@@ -1,11 +1,10 @@
 # app/models/user_token.py
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index, DECIMAL, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
-import json
 
 from app.core.database import Base
 
@@ -16,7 +15,7 @@ class TokenType(str, enum.Enum):
     OAUTH = "oauth"
     REFRESH = "refresh"
     API_KEY = "api_key"
-    ACCESS = "access"  # Added for tracking access tokens if needed
+    ACCESS = "access"
 
 
 class UserToken(Base):
@@ -33,26 +32,12 @@ class UserToken(Base):
     # Foreign key to user
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.users.id", ondelete="CASCADE"), nullable=False)
     
-    # Token details
+    # Token details - matching your database exactly
     token_type = Column(String(50), nullable=False)
     token_value = Column(String(500), nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     is_used = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    
-    # Additional metadata (for OAuth tokens, device info, etc.)
-    token_metadata = Column(JSON, nullable=True, default=dict)
-    
-    # JWT ID for tracking (if using JWT tokens)
-    jti = Column(String(100), nullable=True, unique=True, index=True)
-    
-    # Last used timestamp (for refresh tokens and API keys)
-    last_used_at = Column(DateTime(timezone=True), nullable=True)
-    
-    # IP address and user agent (for security tracking)
-    created_ip = Column(String(45), nullable=True)  # Supports IPv6
-    last_used_ip = Column(String(45), nullable=True)
-    user_agent = Column(String(500), nullable=True)
     
     # Relationships
     user = relationship("User", back_populates="tokens")
@@ -75,42 +60,7 @@ class UserToken(Base):
     def mark_as_used(self, db_session):
         """Mark token as used"""
         self.is_used = True
-        self.last_used_at = datetime.now(timezone.utc)
         db_session.commit()
-    
-    def update_last_used(self, db_session, ip_address=None):
-        """Update last used timestamp and IP"""
-        self.last_used_at = datetime.now(timezone.utc)
-        if ip_address:
-            self.last_used_ip = ip_address
-        db_session.commit()
-    
-    def get_metadata(self, key=None):
-        """Get metadata value or entire metadata dict"""
-        if not self.token_metadata:
-            return None if key else {}
-        
-        if key:
-            return self.token_metadata.get(key)
-        return self.token_metadata
-    
-    def set_metadata(self, key, value, db_session):
-        """Set metadata value"""
-        if not self.token_metadata:
-            self.token_metadata = {}
-        
-        self.token_metadata[key] = value
-        db_session.commit()
-    
-    @property
-    def device_info(self):
-        """Extract device info from metadata"""
-        return self.get_metadata('device') or {}
-    
-    @property
-    def scopes(self):
-        """Get token scopes (for API keys)"""
-        return self.get_metadata('scopes') or []
     
     @property
     def time_until_expiry(self):
@@ -128,17 +78,12 @@ class UserToken(Base):
             'type': self.token_type,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
-            'last_used_at': self.last_used_at.isoformat() if self.last_used_at else None,
             'is_valid': self.is_valid,
-            'device_info': self.device_info,
-            'created_ip': self.created_ip,
-            'last_used_ip': self.last_used_ip
+            'is_used': self.is_used
         }
 
 
-# Additional models for the users schema (keeping from original)
-
-from sqlalchemy import DECIMAL, Text
+# Import GenderType from user model
 from app.models.user import GenderType
 
 

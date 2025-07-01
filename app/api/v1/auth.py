@@ -31,13 +31,14 @@ from app.models.user_token import TokenType
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(tags=["Authentication"])
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 @signup_limit
 async def signup(
     request: Request,
+    response: Response,  # Required for rate limiting
     signup_data: SignupRequest,
     db: Session = Depends(get_db)
 ):
@@ -54,7 +55,7 @@ async def signup(
         return AuthResponse(
             access_token="",  # No token until email verified
             token_type="bearer",
-            user=UserResponse.from_orm(user),
+            user=UserResponse.model_validate(user),  # Pydantic v2 change
             message=message,
             requires_verification=True
         )
@@ -76,8 +77,8 @@ async def signup(
 @login_limit
 async def login(
     request: Request,
+    response: Response,  # Required for both rate limiting and cookie setting
     login_data: LoginRequest,
-    response: Response,
     db: Session = Depends(get_db)
 ):
     """
@@ -123,6 +124,7 @@ async def login(
 @api_limit
 async def refresh_token(
     request: Request,
+    response: Response,  # Required for rate limiting
     refresh_request: Optional[RefreshTokenRequest] = None,
     db: Session = Depends(get_db)
 ):
@@ -172,6 +174,7 @@ async def refresh_token(
 @verify_email_limit
 async def verify_email(
     request: Request,
+    response: Response,  # Required for rate limiting
     verification_data: EmailVerificationRequest,
     db: Session = Depends(get_db)
 ):
@@ -201,6 +204,7 @@ async def verify_email(
 @password_reset_limit  # Use same limit as password reset
 async def resend_verification(
     request: Request,
+    response: Response,  # Required for rate limiting
     resend_data: ResendVerificationRequest,
     db: Session = Depends(get_db)
 ):
@@ -229,6 +233,7 @@ async def resend_verification(
 @password_reset_limit
 async def forgot_password(
     request: Request,
+    response: Response,  # Required for rate limiting
     request_data: ForgotPasswordRequest,
     db: Session = Depends(get_db)
 ):
@@ -249,6 +254,7 @@ async def forgot_password(
 @password_reset_limit
 async def reset_password(
     request: Request,
+    response: Response,  # Required for rate limiting
     reset_data: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
@@ -383,4 +389,4 @@ async def get_current_user_profile(
     
     For detailed profile, use /users/profile endpoint.
     """
-    return UserResponse.from_orm(current_user)
+    return UserResponse.model_validate(current_user)  # Pydantic v2 change

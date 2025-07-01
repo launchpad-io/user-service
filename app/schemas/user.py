@@ -1,7 +1,7 @@
 # app/schemas/user.py
 from datetime import datetime, date
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from uuid import UUID
 
 from app.models.user import UserRole, GenderType
@@ -23,8 +23,9 @@ class SocialHandlesBase(BaseModel):
     discord_handle: Optional[str] = Field(None, max_length=100)
     instagram_handle: Optional[str] = Field(None, max_length=100)
     
-    @validator('tiktok_handle', 'instagram_handle')
-    def validate_social_handle(cls, v):
+    @field_validator('tiktok_handle', 'instagram_handle')
+    @classmethod
+    def validate_social_handle(cls, v: Optional[str]) -> Optional[str]:
         """Remove @ symbol and validate format"""
         if v:
             v = v.lstrip('@').strip()
@@ -43,14 +44,19 @@ class CreatorMetricsBase(BaseModel):
 
 class UserBase(BaseModel):
     """Base user schema with common fields"""
+    model_config = ConfigDict(
+        use_enum_values=True,
+        from_attributes=True
+    )
+    
     email: EmailStr
-    username: Optional[str] = Field(None, min_length=3, max_length=100, regex="^[a-zA-Z0-9_-]+$")
+    username: Optional[str] = Field(None, min_length=3, max_length=100, pattern="^[a-zA-Z0-9_-]+$")
     role: UserRole
     
     # Personal information
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
-    phone: Optional[str] = Field(None, regex="^\\+?[1-9]\\d{1,14}$")  # E.164 format
+    phone: Optional[str] = Field(None, pattern="^\\+?[1-9]\\d{1,14}$")  # E.164 format
     date_of_birth: Optional[date] = None
     gender: Optional[GenderType] = None
     bio: Optional[str] = Field(None, max_length=500)
@@ -60,8 +66,9 @@ class UserBase(BaseModel):
     website_url: Optional[str] = Field(None, max_length=500)
     tax_id: Optional[str] = Field(None, max_length=50)
     
-    @validator('website_url')
-    def validate_website(cls, v):
+    @field_validator('website_url')
+    @classmethod
+    def validate_website(cls, v: Optional[str]) -> Optional[str]:
         """Add https:// if not present"""
         if v and not v.startswith(('http://', 'https://')):
             return f'https://{v}'
@@ -77,73 +84,83 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase, SocialHandlesBase):
     """Schema for creating a new user - used in signup"""
+    model_config = ConfigDict(
+        use_enum_values=True
+    )
+    
     password: str = Field(..., min_length=8)
     confirm_password: str
     accept_terms: bool = Field(..., description="User must accept terms")
     
     # For backward compatibility
-    full_name: Optional[str] = None
     tiktok_username: Optional[str] = None  # Alias for tiktok_handle
     contact_full_name: Optional[str] = None  # For agencies/brands
     website: Optional[str] = None  # Alias for website_url
     
-    @root_validator(pre=True)
-    def handle_legacy_fields(cls, values):
+    @model_validator(mode='before')
+    @classmethod
+    def handle_legacy_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Handle legacy field names for backward compatibility"""
-        # Handle full_name splitting
-        if values.get('full_name') and not values.get('first_name'):
-            name_parts = values['full_name'].strip().split(' ', 1)
-            values['first_name'] = name_parts[0] if name_parts else None
-            values['last_name'] = name_parts[1] if len(name_parts) > 1 else None
-        
-        # Handle contact_full_name for agencies/brands
-        if values.get('contact_full_name') and not values.get('first_name'):
-            name_parts = values['contact_full_name'].strip().split(' ', 1)
-            values['first_name'] = name_parts[0] if name_parts else None
-            values['last_name'] = name_parts[1] if len(name_parts) > 1 else None
-        
-        # Map old field names to new ones
-        if values.get('tiktok_username'):
-            values['tiktok_handle'] = values['tiktok_username']
-        if values.get('website'):
-            values['website_url'] = values['website']
+        if isinstance(values, dict):
+            # Handle full_name splitting
+            if values.get('full_name') and not values.get('first_name'):
+                name_parts = values['full_name'].strip().split(' ', 1)
+                values['first_name'] = name_parts[0] if name_parts else None
+                values['last_name'] = name_parts[1] if len(name_parts) > 1 else None
             
+            # Handle contact_full_name for agencies/brands
+            if values.get('contact_full_name') and not values.get('first_name'):
+                name_parts = values['contact_full_name'].strip().split(' ', 1)
+                values['first_name'] = name_parts[0] if name_parts else None
+                values['last_name'] = name_parts[1] if len(name_parts) > 1 else None
+            
+            # Map old field names to new ones
+            if values.get('tiktok_username'):
+                values['tiktok_handle'] = values['tiktok_username']
+            if values.get('website'):
+                values['website_url'] = values['website']
+                
         return values
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v: str, info) -> str:
         """Validate passwords match"""
-        if 'password' in values and v != values['password']:
+        if 'password' in info.data and v != info.data['password']:
             raise ValueError('Passwords do not match')
         return v
     
-    @validator('accept_terms')
-    def terms_accepted(cls, v):
+    @field_validator('accept_terms')
+    @classmethod
+    def terms_accepted(cls, v: bool) -> bool:
         """Ensure terms are accepted"""
         if not v:
             raise ValueError('You must accept the terms and conditions')
         return v
     
-    @root_validator
-    def validate_role_fields(cls, values):
+    @model_validator(mode='after')
+    def validate_role_fields(self) -> 'UserCreate':
         """Validate required fields based on role"""
-        role = values.get('role')
-        
-        if role == UserRole.CREATOR:
-            if not values.get('first_name'):
+        if self.role == UserRole.CREATOR:
+            if not self.first_name:
                 raise ValueError('First name is required for creators')
-            if not values.get('tiktok_handle') and not values.get('tiktok_username'):
+            if not self.tiktok_handle and not self.tiktok_username:
                 raise ValueError('TikTok handle is required for creators')
                 
-        elif role in [UserRole.AGENCY, UserRole.BRAND]:
-            if not values.get('company_name'):
+        elif self.role in [UserRole.AGENCY, UserRole.BRAND]:
+            if not self.company_name:
                 raise ValueError('Company name is required for agencies and brands')
                 
-        return values
+        return self
 
 
 class UserUpdate(UserBase, AddressBase, SocialHandlesBase, CreatorMetricsBase):
     """Schema for updating user profile"""
+    model_config = ConfigDict(
+        use_enum_values=True,
+        from_attributes=True
+    )
+    
     email: Optional[EmailStr] = None  # Email can't be updated directly
     username: Optional[str] = None  # Username update requires validation
     role: Optional[UserRole] = None  # Role can't be updated by user
@@ -152,13 +169,15 @@ class UserUpdate(UserBase, AddressBase, SocialHandlesBase, CreatorMetricsBase):
     profile_image_url: Optional[str] = Field(None, max_length=500)
     notification_preferences: Optional[Dict[str, Any]] = None
     timezone: Optional[str] = Field(None, max_length=50)
-    
-    class Config:
-        exclude = {'email', 'role'}  # Exclude from updates
 
 
 class UserResponse(BaseModel):
     """Schema for user responses - public user data"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True
+    )
+    
     id: UUID
     email: EmailStr
     username: str
@@ -167,7 +186,7 @@ class UserResponse(BaseModel):
     # Profile information
     first_name: Optional[str]
     last_name: Optional[str]
-    full_name: Optional[str]  # Computed property
+    full_name: Optional[str] = None  # Computed property
     company_name: Optional[str]
     profile_image_url: Optional[str]
     bio: Optional[str]
@@ -186,23 +205,26 @@ class UserResponse(BaseModel):
     updated_at: datetime
     last_login: Optional[datetime]
     
-    class Config:
-        from_attributes = True
-        
-    @validator('full_name', always=True)
-    def compute_full_name(cls, v, values):
+    @model_validator(mode='after')
+    def compute_full_name(self) -> 'UserResponse':
         """Compute full name from first and last name"""
-        if not v:
-            first = values.get('first_name', '')
-            last = values.get('last_name', '')
+        if not self.full_name:
+            first = self.first_name or ''
+            last = self.last_name or ''
             if first and last:
-                return f"{first} {last}"
-            return first or last or None
-        return v
+                self.full_name = f"{first} {last}"
+            else:
+                self.full_name = first or last or None
+        return self
 
 
 class UserProfileResponse(UserResponse, AddressBase, CreatorMetricsBase):
     """Extended user response with private profile data - for own profile"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True
+    )
+    
     phone: Optional[str]
     date_of_birth: Optional[date]
     gender: Optional[GenderType]
@@ -227,25 +249,28 @@ class UserProfileResponse(UserResponse, AddressBase, CreatorMetricsBase):
 
 class CreatorAudienceDemographicsResponse(BaseModel):
     """Response schema for creator audience demographics"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True
+    )
+    
     age_group: str
     gender: GenderType
     percentage: float
     country: Optional[str]
-    
-    class Config:
-        from_attributes = True
 
 
 class CreatorBadgeResponse(BaseModel):
     """Response schema for creator badges"""
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+    
     badge_type: str
     badge_name: str
     badge_description: Optional[str]
     gmv_threshold: Optional[float]
     earned_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 # Update forward references

@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
+    STORAGE_BACKEND: str = "local"  # 'local' or 's3'
+    CDN_URL: Optional[str] = None
+
     # Database
     DATABASE_URL: str
 

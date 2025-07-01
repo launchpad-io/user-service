@@ -1,6 +1,6 @@
 # app/schemas/auth.py
-from typing import Optional
-from pydantic import BaseModel, EmailStr, Field, validator
+from typing import Optional, List
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from datetime import datetime
 
 from app.schemas.user import UserCreate, UserResponse
@@ -18,14 +18,15 @@ class LoginRequest(BaseModel):
     password: str
     remember_me: bool = False
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "email": "user@example.com",
                 "password": "SecurePass123!",
                 "remember_me": True
             }
         }
+    )
 
 
 class AuthResponse(BaseModel):
@@ -36,8 +37,8 @@ class AuthResponse(BaseModel):
     message: Optional[str] = None
     requires_verification: bool = False  # Added for signup flow
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "access_token": "eyJhbGciOiJIUzI1NiIs...",
                 "token_type": "bearer",
@@ -51,42 +52,46 @@ class AuthResponse(BaseModel):
                 "requires_verification": False
             }
         }
+    )
 
 
 class EmailVerificationRequest(BaseModel):
     """Schema for email verification"""
     token: str = Field(..., min_length=32, max_length=32)
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "token": "Abc123Def456Ghi789Jkl012Mno345Pq"
             }
         }
+    )
 
 
 class ResendVerificationRequest(BaseModel):
     """Schema for resending verification email"""
     email: EmailStr
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "email": "user@example.com"
             }
         }
+    )
 
 
 class ForgotPasswordRequest(BaseModel):
     """Schema for forgot password requests"""
     email: EmailStr
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "email": "user@example.com"
             }
         }
+    )
 
 
 class ResetPasswordRequest(BaseModel):
@@ -95,14 +100,16 @@ class ResetPasswordRequest(BaseModel):
     password: str = Field(..., min_length=8)
     confirm_password: str
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'password' in values and v != values['password']:
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v: str, info) -> str:
+        if 'password' in info.data and v != info.data['password']:
             raise ValueError('Passwords do not match')
         return v
     
-    @validator('password')
-    def validate_password_strength(cls, v):
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
         """Basic password strength validation"""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters')
@@ -114,14 +121,15 @@ class ResetPasswordRequest(BaseModel):
             raise ValueError('Password must contain at least one number')
         return v
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "token": "Rst789Uvw012Xyz345Abc678Def901Gh",
                 "password": "NewSecurePass123!",
                 "confirm_password": "NewSecurePass123!"
             }
         }
+    )
 
 
 class ChangePasswordRequest(BaseModel):
@@ -130,16 +138,18 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8)
     confirm_new_password: str
     
-    @validator('confirm_new_password')
-    def passwords_match(cls, v, values):
-        if 'new_password' in values and v != values['new_password']:
+    @field_validator('confirm_new_password')
+    @classmethod
+    def passwords_match(cls, v: str, info) -> str:
+        if 'new_password' in info.data and v != info.data['new_password']:
             raise ValueError('New passwords do not match')
         return v
     
-    @validator('new_password')
-    def validate_password_strength(cls, v, values):
+    @field_validator('new_password')
+    @classmethod
+    def validate_password_strength(cls, v: str, info) -> str:
         """Validate password strength and ensure it's different from current"""
-        if 'current_password' in values and v == values['current_password']:
+        if 'current_password' in info.data and v == info.data['current_password']:
             raise ValueError('New password must be different from current password')
         
         if len(v) < 8:
@@ -152,14 +162,15 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError('Password must contain at least one number')
         return v
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "current_password": "OldPassword123!",
                 "new_password": "NewSecurePass456!",
                 "confirm_new_password": "NewSecurePass456!"
             }
         }
+    )
 
 
 class MessageResponse(BaseModel):
@@ -168,14 +179,15 @@ class MessageResponse(BaseModel):
     success: bool = True
     data: Optional[dict] = None  # Added for additional response data
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "message": "Operation completed successfully",
                 "success": True,
                 "data": {}
             }
         }
+    )
 
 
 class TokenData(BaseModel):
@@ -185,8 +197,8 @@ class TokenData(BaseModel):
     iat: Optional[datetime] = None
     token_type: Optional[str] = None
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": "550e8400-e29b-41d4-a716-446655440000",
                 "exp": "2024-01-01T12:00:00Z",
@@ -194,20 +206,22 @@ class TokenData(BaseModel):
                 "token_type": "access"
             }
         }
+    )
 
 
 # Additional schemas for user management
 
 class UsernameCheckRequest(BaseModel):
     """Request to check username availability"""
-    username: str = Field(..., min_length=3, max_length=30, regex="^[a-zA-Z0-9_-]+$")
+    username: str = Field(..., min_length=3, max_length=30, pattern="^[a-zA-Z0-9_-]+$")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "username": "johndoe123"
             }
         }
+    )
 
 
 class UsernameCheckResponse(BaseModel):
@@ -215,16 +229,17 @@ class UsernameCheckResponse(BaseModel):
     available: bool
     username: Optional[str] = None
     reason: Optional[str] = None
-    suggestions: Optional[list[str]] = []
+    suggestions: Optional[List[str]] = []
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "available": False,
                 "reason": "Username already taken",
                 "suggestions": ["johndoe124", "johndoe_official", "real_johndoe"]
             }
         }
+    )
 
 
 class DeleteAccountRequest(BaseModel):
@@ -232,25 +247,26 @@ class DeleteAccountRequest(BaseModel):
     password: str = Field(..., description="Current password for verification")
     reason: Optional[str] = Field(None, max_length=500, description="Optional reason for deletion")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "password": "MyCurrentPassword123!",
                 "reason": "No longer using the service"
             }
         }
+    )
 
 
 class ProfileCompletionResponse(BaseModel):
     """Response for profile completion status"""
     percentage: int = Field(..., ge=0, le=100)
     is_complete: bool
-    missing_required_fields: list[str] = []
-    missing_optional_fields: list[str] = []
-    next_steps: list[str] = []
+    missing_required_fields: List[str] = []
+    missing_optional_fields: List[str] = []
+    next_steps: List[str] = []
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "percentage": 75,
                 "is_complete": False,
@@ -259,3 +275,4 @@ class ProfileCompletionResponse(BaseModel):
                 "next_steps": ["Complete required fields: phone", "Add a profile picture to increase trust"]
             }
         }
+    )

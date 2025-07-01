@@ -90,28 +90,29 @@ class UserService:
         
         return True, None
     
-    def check_username_availability(self, db: Session, username: str) -> Dict[str, Any]:
+    async def check_username_availability(self, db: Session, username: str, current_user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Check if username is available with suggestions if not.
         
         Args:
             db: Database session
             username: Username to check
+            current_user_id: Current user's ID (for updates)
             
         Returns:
             Dict with availability status and suggestions
         """
-        is_valid, error = self.validate_username(db, username)
+        is_valid, error = self.validate_username(db, username, current_user_id)
         
         result = {
-            "username": username,
             "available": is_valid,
-            "error": error,
+            "username": username,
+            "reason": error,
             "suggestions": []
         }
         
         # Generate suggestions if username is taken
-        if not is_valid and "already taken" in (error or ""):
+        if not is_valid and error and "already taken" in error:
             result["suggestions"] = self._generate_username_suggestions(db, username)
         
         return result
@@ -165,7 +166,8 @@ class UserService:
             # Eager load creator-specific relationships
             db.refresh(user, ['audience_demographics', 'badges'])
         
-        return UserProfileResponse.from_orm(user)
+        # Use Pydantic v2 model_validate instead of from_orm
+        return UserProfileResponse.model_validate(user)
     
     def update_user_profile(self, db: Session, user: User, update_data: UserUpdate) -> User:
         """
@@ -179,8 +181,8 @@ class UserService:
         Returns:
             Updated user
         """
-        # Extract update dict excluding None values
-        update_dict = update_data.dict(exclude_unset=True, exclude_none=True)
+        # Extract update dict excluding None values - Pydantic v2 method
+        update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
         
         # Handle username update separately
         if 'username' in update_dict:
@@ -299,6 +301,48 @@ class UserService:
         # Implement based on storage backend
         pass
     
+    async def change_password(self, db: Session, user_id: str, current_password: str, new_password: str) -> bool:
+        """
+        Change user password after verifying current password.
+        
+        Args:
+            db: Database session
+            user_id: User ID
+            current_password: Current password for verification
+            new_password: New password to set
+            
+        Returns:
+            True if successful
+        """
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("User not found")
+        
+        # Verify current password
+        if not verify_password(current_password, user.hashed_password):
+            raise ValueError("Current password is incorrect")
+        
+        # Validate new password
+        from app.core.security import validate_password_strength
+        is_valid, error_msg = validate_password_strength(new_password)
+        if not is_valid:
+            raise ValueError(error_msg)
+        
+        # Update password
+        user.hashed_password = get_password_hash(new_password)
+        user.updated_at = datetime.now(timezone.utc)
+        
+        # Invalidate all tokens for security
+        db.query(UserToken).filter(
+            UserToken.user_id == user.id,
+            UserToken.is_used == False
+        ).update({"is_used": True})
+        
+        db.commit()
+        
+        logger.info(f"Password changed for user {user.email}")
+        return True
+    
     def delete_user_account(self, db: Session, user: User, password: str) -> None:
         """
         Soft delete user account after password verification.
@@ -331,14 +375,16 @@ class UserService:
         
         logger.info(f"Soft deleted account for user {user.id}")
     
+    # In app/services/user_service.py, update these methods:
+
     def get_user_sessions(self, db: Session, user: User) -> List[Dict[str, Any]]:
         """
         Get active sessions for user.
-        
+    
         Args:
             db: Database session
             user: User
-            
+        
         Returns:
             List of active sessions
         """
@@ -347,32 +393,23 @@ class UserService:
             UserToken.user_id == user.id,
             UserToken.token_type == TokenType.REFRESH,
             UserToken.is_used == False,
-            UserToken.expires_at > datetime.utcnow()
+            UserToken.expires_at > datetime.now(timezone.utc)
         ).all()
-        
+    
         sessions = []
         for token in active_tokens:
-            # Parse metadata for session info
-            metadata = {}
-            if token.metadata:
-                # Assuming metadata is JSON string with user agent, IP, etc.
-                import json
-                try:
-                    metadata = json.loads(token.metadata)
-                except:
-                    pass
-            
+            # Since we don't have metadata columns, create simplified session info
             sessions.append({
                 "id": str(token.id),
                 "created_at": token.created_at,
-                "last_active": token.created_at,  # Could track last use
-                "user_agent": metadata.get("user_agent", "Unknown"),
-                "ip_address": metadata.get("ip_address", "Unknown"),
-                "location": metadata.get("location", "Unknown"),
-                "device": self._parse_device(metadata.get("user_agent", "")),
-                "is_current": metadata.get("is_current", False)
+                "last_active": token.created_at,  # No last_used_at column
+                "user_agent": "Unknown",  # No user_agent column
+                "ip_address": "Unknown",  # No IP columns
+                "location": "Unknown",
+                "device": "Unknown",
+                "is_current": False
             })
-        
+    
         return sorted(sessions, key=lambda x: x['created_at'], reverse=True)
     
     def _parse_device(self, user_agent: str) -> str:
@@ -392,20 +429,20 @@ class UserService:
         else:
             return "Unknown"
     
-    def revoke_all_sessions(self, db: Session, user: User, except_current: Optional[str] = None) -> int:
+    async def revoke_all_sessions(self, db: Session, user_id: str, except_current: Optional[str] = None) -> int:
         """
         Revoke all user sessions except optionally the current one.
         
         Args:
             db: Database session
-            user: User
+            user_id: User ID
             except_current: Current token ID to keep active
             
         Returns:
             Number of sessions revoked
         """
         query = db.query(UserToken).filter(
-            UserToken.user_id == user.id,
+            UserToken.user_id == user_id,
             UserToken.token_type.in_([TokenType.REFRESH, TokenType.OAUTH]),
             UserToken.is_used == False
         )
@@ -417,7 +454,7 @@ class UserService:
         query.update({"is_used": True})
         db.commit()
         
-        logger.info(f"Revoked {count} sessions for user {user.email}")
+        logger.info(f"Revoked {count} sessions for user {user_id}")
         return count
 
 

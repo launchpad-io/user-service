@@ -18,7 +18,7 @@ engine = create_engine(
     max_overflow=20,
     echo=settings.DEBUG,  # Log SQL in debug mode
     connect_args={
-        "options": "-csearch_path=users,public"  # Set default schema search path
+        "options": "-csearch_path=users"  # Set default schema search path
     }
 )
 
@@ -32,8 +32,8 @@ def set_schema_search_path(dbapi_conn, connection_record):
         # Ensure UUID extension is available
         cursor.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
         # Set search path to prioritize users schema
-        cursor.execute("SET search_path TO users, public")
-    logger.debug("Schema search path set to: users, public")
+        cursor.execute("SET search_path TO users")
+    logger.debug("Schema search path set to: users")
 
 # Create SessionLocal class
 SessionLocal = sessionmaker(
@@ -54,7 +54,7 @@ def get_db() -> Generator:
     db = SessionLocal()
     try:
         # Set schema for this session
-        db.execute(text("SET search_path TO users, public"))
+        db.execute(text("SET search_path TO users"))
         yield db
     finally:
         db.close()

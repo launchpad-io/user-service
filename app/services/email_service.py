@@ -4,6 +4,8 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
+import traceback
+import ssl
 
 from app.core.config import settings
 
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    """Service for sending emails"""
+    """Service for sending emails with comprehensive error handling"""
     
     def __init__(self):
         self.smtp_host = settings.SMTP_HOST
@@ -23,44 +25,160 @@ class EmailService:
         self.mail_from_name = settings.MAIL_FROM_NAME
         self.frontend_url = settings.FRONTEND_URL
         self.enabled = settings.MAIL_ENABLED
+        
+        # Log configuration on initialization
+        logger.info(f"Email Service initialized - Enabled: {self.enabled}")
+        if self.enabled:
+            logger.info(f"SMTP Configuration:")
+            logger.info(f"  Host: {self.smtp_host}:{self.smtp_port}")
+            logger.info(f"  User: {self.smtp_user}")
+            logger.info(f"  From: {self.mail_from}")
+            logger.info(f"  TLS: {self.smtp_tls}")
+            
+            # Validate configuration
+            if not all([self.smtp_host, self.smtp_port, self.smtp_user, self.smtp_password]):
+                logger.error("⚠️  Email configuration incomplete!")
+                logger.error(f"  SMTP_HOST: {'✓' if self.smtp_host else '✗ Missing'}")
+                logger.error(f"  SMTP_PORT: {'✓' if self.smtp_port else '✗ Missing'}")
+                logger.error(f"  SMTP_USER: {'✓' if self.smtp_user else '✗ Missing'}")
+                logger.error(f"  SMTP_PASSWORD: {'✓' if self.smtp_password else '✗ Missing'}")
+    
+    def _test_smtp_connection(self) -> bool:
+        """Test SMTP connection without sending email"""
+        try:
+            logger.info("Testing SMTP connection...")
+            
+            # Create SSL context
+            context = ssl.create_default_context()
+            
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
+                server.ehlo()
+                if self.smtp_tls:
+                    server.starttls(context=context)
+                    server.ehlo()
+                server.login(self.smtp_user, self.smtp_password)
+                
+            logger.info("✅ SMTP connection test successful")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ SMTP connection test failed: {str(e)}")
+            return False
     
     def _send_email(self, to_email: str, subject: str, html_body: str, text_body: str) -> bool:
-        """Send email using SMTP"""
+        """Send email using SMTP with detailed error logging"""
         if not self.enabled:
-            logger.warning("Email service is disabled")
+            logger.warning("Email service is disabled in configuration")
+            logger.info("To enable emails, set MAIL_ENABLED=true in .env file")
+            return False
+        
+        # Validate configuration
+        if not all([self.smtp_host, self.smtp_port, self.smtp_user, self.smtp_password]):
+            logger.error("❌ Email configuration incomplete. Check your .env file:")
+            logger.error("Required variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD")
             return False
         
         try:
+            logger.info(f"📧 Preparing to send email to {to_email}")
+            logger.debug(f"Subject: {subject}")
+            
             # Create message
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
             msg['From'] = f"{self.mail_from_name} <{self.mail_from}>"
             msg['To'] = to_email
+            msg['Reply-To'] = self.mail_from
             
             # Add text and HTML parts
-            text_part = MIMEText(text_body, 'plain')
-            html_part = MIMEText(html_body, 'html')
+            text_part = MIMEText(text_body, 'plain', 'utf-8')
+            html_part = MIMEText(html_body, 'html', 'utf-8')
             
             msg.attach(text_part)
             msg.attach(html_part)
             
-            # Send email
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                if self.smtp_tls:
-                    server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
+            # Create SSL context for secure connection
+            context = ssl.create_default_context()
             
-            logger.info(f"Email sent successfully to {to_email}")
+            # Connect to SMTP server
+            logger.info(f"🔌 Connecting to {self.smtp_host}:{self.smtp_port}")
+            
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30) as server:
+                # Enable debug output for troubleshooting
+                if settings.DEBUG:
+                    server.set_debuglevel(2)
+                
+                # Say hello to the server
+                server.ehlo()
+                
+                # Start TLS if enabled
+                if self.smtp_tls:
+                    logger.info("🔒 Starting TLS encryption")
+                    server.starttls(context=context)
+                    server.ehlo()  # Re-identify after starting TLS
+                
+                # Login
+                logger.info(f"🔑 Authenticating as {self.smtp_user}")
+                try:
+                    server.login(self.smtp_user, self.smtp_password)
+                except smtplib.SMTPAuthenticationError as auth_error:
+                    logger.error(f"❌ Authentication failed: {str(auth_error)}")
+                    logger.error("📌 For Gmail users:")
+                    logger.error("   1. Enable 2-factor authentication")
+                    logger.error("   2. Generate an App Password at https://myaccount.google.com/apppasswords")
+                    logger.error("   3. Use the 16-character App Password in SMTP_PASSWORD")
+                    return False
+                
+                # Send email
+                logger.info("📤 Sending message...")
+                server.send_message(msg)
+                
+            logger.info(f"✅ Email sent successfully to {to_email}")
             return True
             
+        except smtplib.SMTPServerDisconnected as e:
+            logger.error(f"❌ SMTP Server disconnected: {str(e)}")
+            logger.error("Check your SMTP_HOST and SMTP_PORT settings")
+            logger.error(f"Current settings: {self.smtp_host}:{self.smtp_port}")
+            return False
+            
+        except smtplib.SMTPConnectError as e:
+            logger.error(f"❌ Failed to connect to SMTP server: {str(e)}")
+            logger.error("Possible causes:")
+            logger.error("  - Incorrect SMTP_HOST or SMTP_PORT")
+            logger.error("  - Firewall blocking the connection")
+            logger.error("  - Network connectivity issues")
+            return False
+            
+        except smtplib.SMTPException as e:
+            logger.error(f"❌ SMTP Error: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            return False
+            
+        except ssl.SSLError as e:
+            logger.error(f"❌ SSL Error: {str(e)}")
+            logger.error("Try setting SMTP_TLS=false if your server doesn't support TLS")
+            return False
+            
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+            logger.error(f"❌ Unexpected error sending email: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.debug(f"Full traceback:\n{traceback.format_exc()}")
             return False
     
     def send_verification_email(self, to_email: str, full_name: str, token: str) -> bool:
         """Send email verification link with professional enterprise template"""
         verification_url = f"{self.frontend_url}/auth/verify-email?token={token}"
+        
+        logger.info(f"📨 Sending verification email to {to_email}")
+        logger.debug(f"Verification token: {token}")
+        logger.debug(f"Verification URL: {verification_url}")
+        
+        # First, test SMTP connection
+        if not hasattr(self, '_connection_tested'):
+            self._connection_tested = self._test_smtp_connection()
+            if not self._connection_tested:
+                logger.error("❌ SMTP connection test failed. Email will not be sent.")
+                return False
         
         subject = "Welcome to LaunchPAID - Please Verify Your Email"
         
@@ -130,6 +248,18 @@ class EmailService:
                                 </td>
                             </tr>
                             
+                            <!-- Alternative Link -->
+                            <tr>
+                                <td style="padding: 0 48px 24px 48px;">
+                                    <p style="margin: 0; font-size: 12px; color: #6b7280; text-align: center;">
+                                        Or copy and paste this link into your browser:
+                                    </p>
+                                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #9333ea; text-align: center; word-break: break-all;">
+                                        {verification_url}
+                                    </p>
+                                </td>
+                            </tr>
+                            
                             <!-- Security Notice -->
                             <tr>
                                 <td style="padding: 0 48px 40px 48px;">
@@ -143,56 +273,6 @@ class EmailService:
                                 </td>
                             </tr>
                             
-                            <!-- What's Next Section -->
-                            <tr>
-                                <td style="padding: 0 48px 48px 48px;">
-                                    <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #111827;">
-                                        What happens next?
-                                    </h3>
-                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                        <tr>
-                                            <td valign="top" style="padding-right: 12px;">
-                                                <div style="width: 24px; height: 24px; border-radius: 50%; background-color: #ede9fe; 
-                                                            color: #9333ea; text-align: center; line-height: 24px; font-weight: 600; font-size: 14px;">
-                                                    1
-                                                </div>
-                                            </td>
-                                            <td style="padding-bottom: 16px;">
-                                                <p style="margin: 0; font-size: 14px; color: #4b5563;">
-                                                    Click the verification button to confirm your email address
-                                                </p>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td valign="top" style="padding-right: 12px;">
-                                                <div style="width: 24px; height: 24px; border-radius: 50%; background-color: #ede9fe; 
-                                                            color: #9333ea; text-align: center; line-height: 24px; font-weight: 600; font-size: 14px;">
-                                                    2
-                                                </div>
-                                            </td>
-                                            <td style="padding-bottom: 16px;">
-                                                <p style="margin: 0; font-size: 14px; color: #4b5563;">
-                                                    Complete your profile to maximize your opportunities
-                                                </p>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td valign="top" style="padding-right: 12px;">
-                                                <div style="width: 24px; height: 24px; border-radius: 50%; background-color: #ede9fe; 
-                                                            color: #9333ea; text-align: center; line-height: 24px; font-weight: 600; font-size: 14px;">
-                                                    3
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <p style="margin: 0; font-size: 14px; color: #4b5563;">
-                                                    Start connecting with brands and creators immediately
-                                                </p>
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                            
                             <!-- Footer -->
                             <tr>
                                 <td style="background-color: #f9fafb; padding: 32px 48px; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
@@ -200,7 +280,7 @@ class EmailService:
                                         <tr>
                                             <td align="center">
                                                 <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280;">
-                                                    © 2024 LaunchPAID. All rights reserved.
+                                                    © 2025 LaunchPAID. All rights reserved.
                                                 </p>
                                                 <p style="margin: 0; font-size: 12px; color: #9ca3af;">
                                                     LaunchPAID is a product of Novanex Ventures
@@ -227,18 +307,21 @@ class EmailService:
         
         {verification_url}
         
-        What happens next?
-        1. Click the verification link to confirm your email address
-        2. Complete your profile to maximize your opportunities
-        3. Start connecting with brands and creators immediately
-        
         Security Notice: This verification link will expire in 24 hours. If you did not create an account with LaunchPAID, please disregard this email.
         
-        © 2024 LaunchPAID. All rights reserved.
+        © 2025 LaunchPAID. All rights reserved.
         LaunchPAID is a product of Novanex Ventures
         """
         
-        return self._send_email(to_email, subject, html_body, text_body)
+        success = self._send_email(to_email, subject, html_body, text_body)
+        
+        if success:
+            logger.info(f"✅ Verification email sent successfully to {to_email}")
+        else:
+            logger.error(f"❌ Failed to send verification email to {to_email}")
+            logger.info("💡 Check the logs above for specific error details")
+        
+        return success
     
     def send_welcome_email(self, to_email: str, full_name: str, role: str) -> bool:
         """Send welcome email after successful verification"""
@@ -279,7 +362,7 @@ class EmailService:
             <!-- Footer -->
             <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                    © 2024 LaunchPAID. All rights reserved.
+                    © 2025 LaunchPAID. All rights reserved.
                 </p>
             </div>
         </div>
@@ -294,7 +377,7 @@ class EmailService:
         
         Go to your dashboard: {self.frontend_url}/dashboard
         
-        © 2024 LaunchPAID
+        © 2025 LaunchPAID
         """
         
         return self._send_email(to_email, subject, html_body, text_body)
@@ -350,7 +433,7 @@ class EmailService:
             <!-- Footer -->
             <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
                 <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                    © 2024 LaunchPAID. All rights reserved.
+                    © 2025 LaunchPAID. All rights reserved.
                 </p>
             </div>
         </div>

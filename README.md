@@ -1,97 +1,128 @@
-User Service (FastAPI Microservice)
+### 🚀 LaunchPAID - TikTok Influencer Marketing Platform
+A comprehensive SaaS platform connecting TikTok creators with brands and agencies for influencer marketing campaigns. Built with modern technologies and enterprise-grade security.
 
-# 🧩 User Service (FastAPI Microservice)
+## 🎯 Overview
+•	- Multi-role authentication (Creators, Agencies, Brands)
+•	- TikTok Shop integration for real-time GMV tracking
+•	- Automated campaign management and creator payments
+•	- Discord integration for community management
+•	- SMS/Email notifications for engagement
+•	- Performance analytics and reporting dashboards
 
-A modular, production-ready **User Authentication & Management microservice** built with FastAPI, leveraging modern development practices such as:
-- JWT-based authentication
-- Modular folder structure
-- Dockerized deployment
-- Environment-based configuration
-
-## 📁 Project Structure
-user-service/
-│
-├── app/
-│   ├── api/v1/             # Route definitions (auth, users)
-│   ├── core/               # Configuration, DB connection, security
-│   ├── models/             # SQLAlchemy models
-│   ├── schemas/            # Pydantic schemas
-│   ├── services/           # Business logic (auth, email, etc.)
-│   ├── utils/              # Dependency injection, helpers
-│   └── main.py             # Entry point for FastAPI app
-│
-├── .env                    # Environment variables (not tracked)
-├── .env.example            # Sample environment file
-├── .gitignore
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── README.md
-└── test_import.py          # Import test stub
-
+## 🛠️ Tech Stack
+•	Backend:
+- FastAPI
+- PostgreSQL
+- SQLAlchemy
+- JWT
+- Bcrypt
+- Slowapi
+•	Frontend:
+- Next.js 14
+- TypeScript
+- Tailwind CSS
+- Shadcn/ui
+- Axios
+•	Infrastructure:
+- Docker
+- CORS
+- SMTP
+  
 ## 🚀 Getting Started
+•	Prerequisites:
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL 14+
+- Git
+  
+## 🔧 Backend Setup
+•	1. Clone the repository:
+   git clone https://github.com/yourusername/launchpaid.git
+   cd launchpaid/user-service
+•	2. Create virtual environment:
+   python -m venv venv
+   source venv/bin/activate (Linux/macOS)
+   venv\Scripts\activate (Windows)
+•	3. Install dependencies:
+   pip install -r requirements.txt
+•	4. Configure environment:
+   cp .env.example .env (Edit it)
+•	5. Setup database:
+   createdb launchpaid_db
+   alembic upgrade head
+•	6. Run the backend:
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-### 1. 🧪 Clone the Repo
-git clone https://github.com/launchpad-io/user-service.git
+## 🌐 Frontend Setup
+•	cd ../frontend
+•	npm install
+•	cp .env.example .env.local (Update API URL)
+•	npm run dev
+
+## 📋 Features
+•	Authentication & Security:
+- JWT auth
+- Email verification
+- Password reset
+- Rate limiting
+- Bcrypt
+- Account lockout (In Progress)
+- Two-factor auth (Planned)
+- Refresh tokens (Planned)
+•	User Management:
+- Multi-role
+- Role-based profiles
+- Email templates
+- Discord/TikTok OAuth (Planned)
+•	Campaign Features:
+- Campaign lifecycle
+- Creator applications
+- Analytics
+- Payouts
+- Content approval
+
+## 🔑 Environment Variables
+•	Backend (.env):
+APP_NAME=LaunchPAID API
+... (etc)
+•	Frontend (.env.local):
+NEXT_PUBLIC_API_URL=http://localhost:8000
+
+## 🧪 Testing
+•	Backend:
 cd user-service
+pytest
+•	Frontend:
+cd frontend
+npm test
 
-### 2. 🧱 Create Virtual Environment
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate     # Windows
+## 🐳 Docker Deployment
+•	docker-compose up --build
+•	Starts: Backend(8000), Frontend(3000), PostgreSQL
 
-### 3. 📦 Install Dependencies
-pip install -r requirements.txt
+## 🔄 Development Workflow
+•	Backend: app/api/v1/, app/services/, app/models/
+•	Frontend: src/app/, src/components/, src/lib/api.ts
 
-### 4. ⚙️ Setup Environment Variables
-cp .env.example .env
+## 📈 Roadmap
+•	Phase 1: Auth, Email, Lockout, 2FA, OAuth
+•	Phase 2: Campaigns, Profiles, Analytics, Payments
+•	Phase 3: Advanced Analytics, SMS, Referrals
 
-```env
-DATABASE_URL=postgresql://user:pass@localhost:5432/users
-SECRET_KEY=super-secret
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
+## 🤝 Contributing
+•	1. Fork the repo
+2. Create branch
+3. Commit
+4. Push
+5. PR
 
-## 🧬 Run the API (Dev)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+## 📄 License
+•	This project is proprietary and confidential. All rights reserved © 2025 Novanex Ventures.
 
-📬 Access the docs at: http://localhost:8000/docs
-
-## 🐳 Docker Setup
-
-### Build & Run with Docker Compose:
-docker-compose up --build
-
-📍 FastAPI will be available at: http://localhost:8000
-
-## ✅ API Features
-- 🔐 JWT Authentication
-- 📬 Email service stubbed
-- 👥 User Registration & Login
-- 🛡️ Role-based access ready
-- 📦 Clean modular codebase
-- 🐍 Built on FastAPI + SQLAlchemy + Pydantic
-
-## 📄 .env.example
-DATABASE_URL=postgresql://user:password@localhost:5432/users
-SECRET_KEY=your-secret-key
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-SMTP_SERVER=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=user@example.com
-SMTP_PASSWORD=super-secret
-
-## 🔧 Future Enhancements
-- ✅ CI/CD with GitHub Actions
-- ✅ Swagger API security schemes
-- 🚨 Rate limiting & logging (via SlowAPI + Loguru)
-- 📊 Admin dashboard UI
-- ✉️ Integrated email confirmations (via SMTP)
-
-## 📜 License
-This project is private and maintained by the NovaNex organization.
-All rights reserved © 2025.
-
-## 🙋‍♂️ Maintainers
-- **Zohad** – @zohad1 – Backend Engineering Lead
-
+## 👥 Team
+- Armaghan
+- Abdul Samad
+- Zohad
+  
+## 📞 Support
+•	Email: novanexventures@gmail.com
