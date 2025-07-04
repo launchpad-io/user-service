@@ -1,0 +1,42 @@
+# Python
+*.py[cod]
+__pycache__/
+*.so
+*.egg-info/
+build/
+dist/
+
+# Environment
+venv/
+.env
+.env.*
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.bak
+
+# Logs & Cache
+*.log
+*.sqlite3
+.cache/
+.mypy_cache/
+.pytest_cache/
+coverage.*
+htmlcov/
+*.cover
+*.db
+
+# Docker
+*.pid
+*.tar
+
+# Frontend (if co-located)
+node_modules/
+.next/
+.env.local
+
+# Alembic
+alembic/versions/__pycache__/

@@ -1,0 +1,2 @@
+pydantic v1 is used it will be upgraded to pydantic v2 in future 
+some more features are remaining like 2FA etc
