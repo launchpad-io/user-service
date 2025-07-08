@@ -289,3 +289,22 @@ async def delete_account(
 async def test_users_endpoint():
     """Test endpoint to verify users router is working"""
     return {"message": "Users router is working!", "status": "success"}
+
+from app.api.v1.auth import get_current_user
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user)
+):
+    """Get current user profile - this is what your campaign service expects"""
+    return UserResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        username=current_user.username,
+        role=current_user.role,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        is_active=current_user.is_active,
+        email_verified=current_user.email_verified,
+        created_at=current_user.created_at
+    )

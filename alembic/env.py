@@ -46,7 +46,7 @@ except ImportError as e:
     # Fallback configuration for development
     import os
     class MockSettings:
-        DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost/launchpaid_db")
+        DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:admin@localhost/launchpaid_db")
     settings = MockSettings()
     
     from sqlalchemy.ext.declarative import declarative_base

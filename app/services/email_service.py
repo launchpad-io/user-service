@@ -1,26 +1,50 @@
-# app/services/email_service.py - Email Service Implementation
+# app/services/email_service.py - Email Service with Debug Logging
 import smtplib
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
 import ssl
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class EmailService:
     def __init__(self):
-        # Email configuration based on your settings
-        self.smtp_server = "mail.bytecraftsoft.com"
-        self.smtp_port = 465  # SSL port
-        self.username = "launchpaid@bytecraftsoft.com"
-        self.password = "0E%*)t(6[!A,84g^"
-        self.from_email = "launchpaid@bytecraftsoft.com"
-        self.from_name = "LaunchPAID Team"
+        # Email configuration from settings
+        self.smtp_server = settings.SMTP_HOST
+        self.smtp_port = settings.SMTP_PORT
+        self.username = settings.SMTP_USER
+        self.password = settings.SMTP_PASSWORD
+        self.from_email = settings.MAIL_FROM
+        self.from_name = settings.MAIL_FROM_NAME
+        self.use_tls = settings.SMTP_TLS
+        
+        # Log configuration (without password)
+        logger.info(f"Email Service Configuration:")
+        logger.info(f"  SMTP Server: {self.smtp_server}")
+        logger.info(f"  SMTP Port: {self.smtp_port}")
+        logger.info(f"  Username: {self.username}")
+        logger.info(f"  From Email: {self.from_email}")
+        logger.info(f"  Use TLS: {self.use_tls}")
+        logger.info(f"  Password configured: {'Yes' if self.password else 'No'}")
         
     def send_email(self, to_email: str, subject: str, html_content: str, text_content: Optional[str] = None) -> bool:
-        """Send email using SMTP"""
+        """Send email using SMTP with detailed logging"""
         try:
+            logger.info(f"📧 Attempting to send email to: {to_email}")
+            logger.info(f"   Subject: {subject}")
+            
+            # Check if email is enabled
+            if not settings.MAIL_ENABLED:
+                logger.warning("❌ Email sending is disabled in settings")
+                return False
+            
+            # Check if password is configured
+            if not self.password:
+                logger.error("❌ SMTP password not configured")
+                return False
+            
             # Create message
             message = MIMEMultipart("alternative")
             message["Subject"] = subject
@@ -35,23 +59,58 @@ class EmailService:
             html_part = MIMEText(html_content, "html")
             message.attach(html_part)
             
-            # Create SSL context
-            context = ssl.create_default_context()
-            
             # Connect to server and send email
-            with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context) as server:
-                server.login(self.username, self.password)
-                server.sendmail(self.from_email, to_email, message.as_string())
+            logger.info(f"📧 Connecting to SMTP server: {self.smtp_server}:{self.smtp_port}")
+            
+            if self.smtp_port == 465:
+                # SSL connection
+                logger.info("   Using SSL connection")
+                context = ssl.create_default_context()
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context) as server:
+                    logger.info("   Logging in...")
+                    server.login(self.username, self.password)
+                    logger.info("   Sending email...")
+                    server.sendmail(self.from_email, to_email, message.as_string())
+            else:
+                # STARTTLS connection
+                logger.info("   Using STARTTLS connection")
+                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                    if self.use_tls:
+                        logger.info("   Starting TLS...")
+                        server.starttls()
+                    logger.info("   Logging in...")
+                    server.login(self.username, self.password)
+                    logger.info("   Sending email...")
+                    server.sendmail(self.from_email, to_email, message.as_string())
                 
             logger.info(f"✅ Email sent successfully to: {to_email}")
             return True
             
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"❌ SMTP Authentication failed: {str(e)}")
+            logger.error("   Check your email username and password")
+            return False
+        except smtplib.SMTPConnectError as e:
+            logger.error(f"❌ Failed to connect to SMTP server: {str(e)}")
+            logger.error(f"   Check server: {self.smtp_server} and port: {self.smtp_port}")
+            return False
+        except smtplib.SMTPException as e:
+            logger.error(f"❌ SMTP error: {str(e)}")
+            return False
         except Exception as e:
-            logger.error(f"❌ Failed to send email to {to_email}: {str(e)}")
+            logger.error(f"❌ Unexpected error sending email: {str(e)}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
     
     def send_verification_email(self, to_email: str, username: str, verification_token: str, frontend_url: str = "http://localhost:3000") -> bool:
         """Send email verification email"""
+        
+        logger.info(f"📧 Preparing verification email for: {to_email}")
+        logger.info(f"   Username: {username}")
+        logger.info(f"   Token: {verification_token[:8]}...")
+        logger.info(f"   Frontend URL: {frontend_url}")
         
         verification_url = f"{frontend_url}/auth/verify-email?token={verification_token}&email={to_email}"
         
@@ -74,7 +133,7 @@ class EmailService:
                 .content {{ color: #555; margin-bottom: 30px; }}
                 .button {{ display: inline-block; background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
                 .button:hover {{ background: #2563eb; }}
-                .token-box {{ background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 18px; text-align: center; margin: 20px 0; }}
+                .token-box {{ background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 14px; text-align: center; margin: 20px 0; word-break: break-all; }}
                 .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #888; font-size: 14px; }}
             </style>
         </head>
@@ -95,7 +154,7 @@ class EmailService:
                         <a href="{verification_url}" class="button">Verify Email Address</a>
                     </div>
                     
-                    <p><strong>Option 2:</strong> Copy and paste this verification token:</p>
+                    <p><strong>Option 2:</strong> Copy and paste this verification token on the verification page:</p>
                     <div class="token-box">
                         {verification_token}
                     </div>

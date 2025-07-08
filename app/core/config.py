@@ -34,6 +34,8 @@ class Settings(BaseSettings):
         "http://localhost:3001"
     ]
 
+    
+
     # Email Configuration
     MAIL_ENABLED: bool = True
     MAIL_FROM: str = "noreply@launchpaid.com"

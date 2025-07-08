@@ -14,6 +14,10 @@ class UserRole(str, enum.Enum):
     CREATOR = "creator"
     BRAND = "brand"
     ADMIN = "admin"
+    
+    # Override the __str__ method to always return lowercase
+    def __str__(self):
+        return self.value
 
 
 class GenderType(str, enum.Enum):
@@ -21,6 +25,9 @@ class GenderType(str, enum.Enum):
     FEMALE = "female"
     NON_BINARY = "non_binary"
     PREFER_NOT_TO_SAY = "prefer_not_to_say"
+    
+    def __str__(self):
+        return self.value
 
 
 class User(Base):
@@ -35,8 +42,11 @@ class User(Base):
     username = Column(String(100), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     
-    # Role
-    role = Column(SQLEnum(UserRole, schema="users", name="user_role"), nullable=False)
+    # Role - Force lowercase values
+    role = Column(
+        SQLEnum(UserRole, schema="users", name="user_role", values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False
+    )
     
     # Account status
     is_active = Column(Boolean, default=True)
@@ -52,7 +62,10 @@ class User(Base):
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
     date_of_birth = Column(Date, nullable=True)
-    gender = Column(SQLEnum(GenderType, schema="users", name="gender_type"), nullable=True)
+    gender = Column(
+        SQLEnum(GenderType, schema="users", name="gender_type", values_callable=lambda obj: [e.value for e in obj]),
+        nullable=True
+    )
     profile_image_url = Column(Text, nullable=True)
     bio = Column(Text, nullable=True)
     
